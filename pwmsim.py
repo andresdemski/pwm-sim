@@ -1,6 +1,9 @@
+from scipy.signal import periodogram
 import numpy as np
 import time
-#import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt
+
+np.seterr(divide = 'ignore') 
 
 
 def get_pwm(signal, div=256):
@@ -33,28 +36,54 @@ def main():
 
     sim_time = 10 * signal_period
     sample_freq = 1e6
-    pwm_max = 256
+    pwm_max = 64
     upsample_factor = 1
-
-    fft_upsample_factor = 10
 
     sample_period = 1/sample_freq
 
-
     t = get_time(start=0, ts=sample_period, stop=sim_time)
-    signal = (np.sin(2 * np.pi * signal_freq * t) + 1)/2
+    signal = (0.1* np.sin(2 * np.pi * signal_freq * t) + 1)/2
 
     signal = upsample(signal, up=upsample_factor)
     t = get_time(start=0, ts=sample_period/upsample_factor, stop=sim_time)
 
     pwm_out = get_pwm(signal, div=pwm_max)
     pwm_period = sample_period / upsample_factor
+    pwm_freq = 1/pwm_period
     pwm_resolution = pwm_period / pwm_max
     pwm_time = get_time(start=0, ts=pwm_resolution, num=len(pwm_out))
 
-    pwm_out = upsample(pwm_out, fft_upsample_factor)
-    pwm_spectrum = np.abs(np.fft.fft(pwm_out.astype(np.float)))
-    pwm_f = np.arange(len(pwm_spectrum)) / (pwm_resolution / fft_upsample_factor)
+    fs = 1/pwm_resolution
+    pwm_f, pwm_spectrum = periodogram(pwm_out.astype(np.float), fs=fs)
+    pwm_spectrum += np.ones(len(pwm_spectrum))*1e-10 # Saco los 0s que cagan el log10
+    pwm_spectrum = 20 * np.log10(pwm_spectrum)
+
+
+    print(vars())
+    plt.figure(0)
+    plt.subplot('511')
+    plt.plot(t, signal)
+    plt.subplot('512')
+    plt.plot(pwm_time, pwm_out)
+    plt.subplot('513')
+    plt.plot(pwm_f, pwm_spectrum)
+    f_res = pwm_f[1]
+    for h in range(6):
+        plt.subplot(5,3,10 + h)
+        if h == 0:
+            idx_start = int(0)
+            idx_end = int(signal_freq / f_res * 10)
+            ticks = pwm_f[[idx_start, idx_end]]
+        else:
+            idx_center = int(h * pwm_freq / f_res)
+            idx_spam = int(signal_freq / f_res * 20)
+            idx_start = int(idx_center - idx_spam/2)
+            idx_end = int(idx_center + idx_spam/2)
+            ticks = pwm_f[[idx_center, idx_start, idx_end]]
+        plt.plot(pwm_f[idx_start:idx_end+1], pwm_spectrum[idx_start:idx_end+1])
+        plt.xticks(ticks)
+
+    plt.show()
 
 
 
